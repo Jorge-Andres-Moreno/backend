@@ -1,0 +1,30 @@
+{
+  "name": "medical-backend",
+  "version": "1.0.0",
+  "description": "\"Medical\" Back - End of the application for Project Degree",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SpartanGhost97/backend.git"
+  },
+  "keywords": [
+    "backend",
+    "Node.js",
+    "Javascript",
+    "Serverless",
+    "automation."
+  ],
+  "author": "Jorge Andres Moreno Mera & Cristian Alejandro Morales Lopez",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/SpartanGhost97/backend/issues"
+  },
+  "homepage": "https://github.com/SpartanGhost97/backend#readme",
+  "dependencies": {
+    "firebase": "^7.3.0",
+    "firebase-admin": "^8.7.0"
+  }
+}
