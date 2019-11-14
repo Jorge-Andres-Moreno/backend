@@ -66,7 +66,7 @@ app.delete('/deletedb', function (req, res) {
   ref.remove();
 });
 
-app.add('/adddb', function (req, res) {
+app.post('/add', function (req, res) {
   var usersRef = ref.child("users");
   usersRef.set({
     estela: {
