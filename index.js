@@ -2,6 +2,7 @@
 var admin = require("firebase-admin");
 var express = require('express');
 var body_parser = require('body-parser');
+var fs = require('fs');
 
 //Key- services
 var serviceAccount = require("./serviceAccountKey.json");
@@ -18,7 +19,7 @@ var ref = db.ref("PruebaTABLE/");
 
 //Server configuration
 
-var port = process.env.PORT || 8080;
+var port = process.env.PORT || 80;
 var app = express();
 app.use(body_parser.urlencoded({ extended: true }));
 
@@ -28,6 +29,13 @@ app.delete('/deletedb', function (req, res) {
   ref = db.ref("PruebaTABLE/");
   ref.remove();
   res.status(200).send("success")
+});
+
+app.get('/', function (req, res) {
+  fs.readFile("./principal.html", "UTF-8", function (err, html) {
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(html);
+  });
 });
 
 app.put('/add', function (req, res) {
@@ -51,6 +59,6 @@ app.put('/add', function (req, res) {
 //Run server
 var server = app.listen(port, function () {
   console.log('Run Server at:');
-  console.log('Servidor ejecutandose en localhost:8080');
+  console.log('Servidor ejecutandose en localhost:80');
 });
 
