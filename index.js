@@ -4,18 +4,12 @@
 var admin = require("firebase-admin");
 var https = require('https');
 var express = require('express');
-var body_parser = require('body-parser');
 var fs = require('fs');
-
-
 
 //Key- services
 var serviceAccount = require("./serviceAccountKey.json");
 
-
-
 //init service firebase
-
 admin.initializeApp({
 
   credential: admin.credential.cert(serviceAccount),
@@ -23,25 +17,16 @@ admin.initializeApp({
 
 });
 
-
-
 // firebase config
-
 var db = admin.database();
 
-
-
 //Server configuration
-
 var port = process.env.PORT || 8080;
 var app = express();
-app.use(body_parser.urlencoded({ extended: true }));
-
-
+app.use(express.json());
 
 
 //End points
-
 app.delete('/deletedb', function (req, res) {
 
   console.log('DELETE="/deletedb"');
@@ -52,6 +37,38 @@ app.delete('/deletedb', function (req, res) {
 
 });
 
+
+/*
+app.post('/ayuda/add',function(req,res){
+  console.log("POST=/ayuda");
+  res.status(200).send(req.body)
+});
+
+app.delete('/ayuda/delete',function(req,res){
+  console.log("DELETE=/ayuda/delete");
+  res.status(200).send(req.body)
+});
+*/
+
+app.get('/perfil', function (req, res) {
+  console.log("GET=/perfil");
+
+  var ref = db.ref('usuarios/' + req.query.id+'/');
+
+  ref.once("value", function (snapshot) {
+
+    var values = snapshot.val()
+    if (values != null) {
+      console.log('SUCCESS FOUND DATA')
+      res.status(200).send(values)
+    } else {
+      console.log('FAIL FOUND DATA')
+      res.status(400).send("Bad request")
+    }
+
+  });
+
+});
 
 
 app.get('/readb', function (req, res) {
@@ -73,9 +90,6 @@ app.get('/readb', function (req, res) {
   });
 
 });
-
-
-
 
 
 app.get('/', function (req, res) {
@@ -114,10 +128,13 @@ app.put('/add', function (req, res) {
 
 });
 
-https.createServer({
+var server = https.createServer({
   key: fs.readFileSync('server.key'),
   cert: fs.readFileSync('server.cert')
-}, app).listen(port, function () {
-  console.log('SERVER HTTPS STARTED WITH PORT: ' + port)
-})
+}, app);
 
+server.on('listening', function () {
+  console.log('SERVER HTTPS STARTED WITH PORT: ' + port)
+});
+
+server.listen(port);
