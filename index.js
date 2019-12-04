@@ -102,7 +102,7 @@ app.post('/perfil', function (req, res) {
 
   var device = body.device
 
-  if (device == "phone") {
+  if (device == "0") {
 
     var id = body.id;
     var type = body.type;
@@ -128,12 +128,15 @@ app.post('/perfil', function (req, res) {
     } else {
       res.status(402).send("Bad request - params ");
     }
-  } else {
+  } else if(device == "1") {
 
     var email = body.email;
     var password = body.password
 
-    firebase.auth().signInWithEmailAndPassword(email, password).catch((error) => {
+    console.log('email :'+email);
+    console.log('password :'+password);
+    
+    admin.auth().signInWithEmailAndPassword(email, password).catch((error) => {
       // Handle Errors here.
       var errorCode = error.code;
       var errorMessage = error.message;
