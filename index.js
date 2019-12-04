@@ -1,100 +1,195 @@
 
+
 //libraries an extensions
 
 var admin = require("firebase-admin");
-var https = require('https');
+
+//var https = require('https');
+var http = require('http');
 var express = require('express');
 var fs = require('fs');
+var bodyParser = require('body-parser');
 
 //Key- services
 var serviceAccount = require("./serviceAccountKey.json");
 
 //init service firebase
 admin.initializeApp({
-
   credential: admin.credential.cert(serviceAccount),
   databaseURL: "https://grade-project-pdg.firebaseio.com"
-
 });
 
 // firebase config
 var db = admin.database();
 
 //Server configuration
+//var portHttps = process.env.PORT || 8443;
 var port = process.env.PORT || 8080;
+
+
 var app = express();
-app.use(express.json());
+app.use(bodyParser.urlencoded({ extended: false }))
+app.use(bodyParser.json());
 
 
 //End points
+/*
 app.delete('/deletedb', function (req, res) {
-
   console.log('DELETE="/deletedb"');
-
   var ref = db.ref("usuarios/");
   ref.remove();
   res.status(200).send("success")
-
-});
-
-
-/*
-app.post('/ayuda/add',function(req,res){
-  console.log("POST=/ayuda");
-  res.status(200).send(req.body)
-});
-
-app.delete('/ayuda/delete',function(req,res){
-  console.log("DELETE=/ayuda/delete");
-  res.status(200).send(req.body)
 });
 */
 
-app.get('/perfil', function (req, res) {
-  console.log("GET=/perfil");
+app.put('/ayuda/peticion', function (req, res) {
 
-  var ref = db.ref('usuarios/' + req.query.id+'/');
+  //validar data me falta
+  console.log("PUT=/ayuda/peticion");
+
+  var ref = db.ref('ayuda/');
+  var count = 0;
 
   ref.once("value", function (snapshot) {
 
-    var values = snapshot.val()
-    if (values != null) {
-      console.log('SUCCESS FOUND DATA')
-      res.status(200).send(values)
-    } else {
-      console.log('FAIL FOUND DATA')
-      res.status(400).send("Bad request")
-    }
+    count = snapshot.numChildren();
+    ref = db.ref('ayuda/' + count);
+    ref.set(req.body);
+    res.status(200).send('success');
 
   });
 
 });
 
+app.delete('/ayuda/borrar', function (req, res) {
+  console.log("DELETE=/ayuda/borrar");
+  res.status(200).send(req.body)
+});
 
+app.post('/monitoreo', function (req, res) {
+  console.log("POST=/monitoreo");
+
+  var body = req.body;
+  var id = body.id;
+  var pulso = body.pulso;
+  var ecg = body.ecg;
+
+  if (id != undefined && id != '') {
+    if (pulso == "true") {
+      ref = db.ref('pacientes/' + id + '/monitoreo/pulso');
+
+      ref.once("value", function (snapshot) {
+        var values = snapshot.val();
+        if (values != null) {
+          values = { 'pulso': values };
+          res.status(200).send(values)
+        } else {
+          res.status(401).send("Bad request - user doesnt exist");
+        }
+      });
+    } else {
+      res.status(402).send("Bad request - params ");
+    }
+  }
+
+});
+
+app.post('/perfil', function (req, res) {
+
+  console.log("POST=/perfil");
+
+  var body = req.body;
+
+  var device = body.device
+
+  if (device == "phone") {
+
+    var id = body.id;
+    var type = body.type;
+
+    if (id != undefined && id != '' && type != undefined && type != '') {
+      var ref = undefined
+
+      if (type == "1") {
+        ref = db.ref('doctores/' + id + '/informacion');
+      } else if (type == "0") {
+        ref = db.ref('pacientes/' + id + '/informacion');
+      }
+
+      ref.once("value", function (snapshot) {
+        var values = snapshot.val();
+        if (values != null) {
+          res.status(200).send(values)
+        } else {
+          res.status(401).send("Bad request - user doesnt exist");
+        }
+      });
+
+    } else {
+      res.status(402).send("Bad request - params ");
+    }
+  } else {
+
+    var email = body.email;
+    var password = body.password
+
+    firebase.auth().signInWithEmailAndPassword(email, password).catch((error) => {
+      // Handle Errors here.
+      var errorCode = error.code;
+      var errorMessage = error.message;
+
+    });
+  }
+});
+
+app.post('/pacientes', function (req, res) {
+
+  console.log('POST="/pacientes"');
+
+  var body = req.body;
+  var id = body.id;
+
+  if (id != undefined && id != '') {
+    var ref = db.ref('doctores/' + id + '/pacientes');
+
+    ref.once("value", function (snapshot) {
+      var values = snapshot.val();
+      if (values != null) {
+        values = { 'pacientes': values };
+        res.status(200).send(values)
+      } else {
+        res.status(400).send("Bad request")
+      }
+
+    });
+  } else {
+    res.status(400).send("Bad request")
+  }
+
+});
+
+app.get('/hello', function (req, res) {
+  console.log('GET="/hello"');
+  res.status(200).send("Hello REQUEST-GET");
+});
+
+/*
 app.get('/readb', function (req, res) {
-
   console.log('GET="/readb"');
-
   var ref = db.ref("usuarios/");
   ref.once("value", function (snapshot) {
-
     var values = snapshot.val()
     if (values != null) {
-      console.log('Data fetched successfully')
       res.status(200).send(values)
     } else {
-      console.log('Failed to fetch the data')
       res.status(400).send("Bad request")
     }
-
   });
-
 });
-
+*/
 
 app.get('/', function (req, res) {
   console.log('GET="/"');
-
   fs.readFile("./principal.html", "UTF-8", function (err, html) {
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end(html);
@@ -103,31 +198,11 @@ app.get('/', function (req, res) {
 });
 
 
+// run server
 
-app.put('/add', function (req, res) {
+http.createServer(app).listen(port);
 
-  console.log('PUT="/add"');
-
-  var ref = db.ref("usuarios/");
-
-  ref.set({
-
-    estela: {
-      date_of_birth: "June 23, 1912",
-      full_name: "Alan Turing"
-    },
-
-    gracehop: {
-      date_of_birth: "December 9, 1906",
-      full_name: "Grace Hopper"
-    }
-
-  });
-
-  res.status(200).send("success");
-
-});
-
+/*
 var server = https.createServer({
   key: fs.readFileSync('server.key'),
   cert: fs.readFileSync('server.cert')
@@ -138,3 +213,4 @@ server.on('listening', function () {
 });
 
 server.listen(port);
+*/
