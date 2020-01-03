@@ -9,6 +9,7 @@ var http = require('http');
 var express = require('express');
 var fs = require('fs');
 var bodyParser = require('body-parser');
+var FCM = require('fcm-push');
 
 //Key- services
 var serviceAccount = require("./serviceAccountKey.json");
@@ -43,21 +44,15 @@ var db = admin.database();
 //var portHttps = process.env.PORT || 8443;
 var port = process.env.PORT || 8080;
 
-
 var app = express();
 app.use(bodyParser.urlencoded({ extended: false }))
 app.use(bodyParser.json());
 
+var servKey = 'AAAAvT9WED0:APA91bHyZeQI6eteSHHw1qVTt5KgpyFbZG4gsakCFSBYSleqTsLG2hqgJTz7iiXM5R0QJ_sv4tsV5jPnH7K3uBgw5EcurY4QNnqXg67rKrx6sU_gZOtgqLiUhUNgPcamDp2EXt74bJ-G';
+var fcm = new FCM(servKey);
 
 //End points
-/*
-app.delete('/deletedb', function (req, res) {
-  console.log('DELETE="/deletedb"');
-  var ref = db.ref("usuarios/");
-  ref.remove();
-  res.status(200).send("success")
-});
-*/
+
 
 app.put('/ayuda', function (req, res) {
 
@@ -95,6 +90,183 @@ app.get('/ayuda', function (req, res) {
       res.status(401).send("Bad request - user doesnt exist");
     }
   });
+
+});
+
+app.put('/perfil', function (req, res) {
+
+  //validar data me falta
+  console.log("PUT=/perfil");
+
+  var type = req.body.type
+
+  if (type != undefined && type != '')
+    admin.auth().createUser({
+      email: req.body.informacion.email,
+      password: req.body.informacion.password,
+      disabled: false
+    })
+      .then(function (userRecord) {
+        // See the UserRecord reference doc for the contents of userRecord.
+
+        var branch = '';
+        if (type == "1")
+          branch = 'profesional/'
+        else if (type == "0") {
+          branch = 'pacientes/'
+          var ref = db.ref(branch + '/' + userRecord.uid + '/metas/');
+          ref.set({
+            KgCaloriasAsignadas: 0,
+            PasosAsignados: 0,
+            PasosLogrados: 0,
+            kgCaloriasLogradas: 0
+          });
+        }
+
+        ref = db.ref(branch + 'lista/');
+        var refPost = ref.push({ 'id': userRecord.uid, 'nombre': req.body.informacion.nombre })
+
+        ref = db.ref(branch + userRecord.uid + '/informacion');
+        req.body.informacion.id = userRecord.uid;
+        req.body.informacion.ref = refPost.key;
+        ref.set(req.body.informacion)
+
+        console.log('Successfully created new user:', userRecord.uid);
+        res.status(200).send('success');
+      })
+      .catch(function (error) {
+        console.log('Error creating new user:', error);
+        res.status(401).send(error);
+      });
+  else
+    res.status(400).send("bad request");
+
+});
+
+app.post('/metas-update', function (req, res) {
+
+  console.log("POST=/metas-update");
+  var id = req.body.id;
+  var goals = req.body;
+
+  if (id != undefined && id != '' && goals != undefined && goals != '') {
+    var ref = db.ref('pacientes/' + id + '/metas/KgCaloriasAsignadas/');
+    ref.set(goals.KgCaloriasAsignadas);
+
+    ref = db.ref('pacientes/' + id + '/metas/PasosAsignados/');
+    ref.set(goals.PasosAsignados);
+
+    res.status(200).send('success');
+  } else
+    res.status(402).send("Bad request - params ");
+
+});
+
+app.delete('/perfil', function (req, res) {
+
+  //validar data me falta
+  console.log("DELETE=/perfil");
+
+  var type = req.body.type
+
+  if (type != undefined && type != '') {
+
+    var uid = req.body.id;
+    admin.auth().deleteUser(uid).then(function () {
+
+      if (type == "1")
+        eliminarProfesional(uid, res)
+      else if (type == "0")
+        eliminarPaciente(uid, res);
+      else
+        res.status(401).send("bad request");
+
+    });
+  } else
+    res.status(400).send("bad request");
+
+});
+
+function eliminarPaciente(id, res) {
+
+  var reference = db.ref('pacientes/' + id + '/informacion/');
+
+  reference.once('value', function (result) {
+    var body = result.val();
+
+    if (body != null) {
+      var idLista = body.ref
+      var idPro = body.profesional
+
+      reference = db.ref('pacientes/' + id);
+      reference.remove();
+
+      reference = db.ref('pacientes/lista/' + idLista);
+      reference.remove();
+
+      if (idPro != null && idPro != '') {
+        reference = db.ref('profesional/' + idPro + '/pacientes/' + id);
+        reference.remove();
+      }
+      res.status(200).send({ result: 'sucess', msj: 'data deleted sucess' });
+
+    } else
+      res.status(401).send("bad request");
+
+  });
+
+}
+
+function eliminarProfesional(id, res) {
+  var reference = db.ref('profesional/' + id);
+
+  reference.once('value', function (result) {
+    var body = result.val();
+
+    if (body != null) {
+
+      var idLista = body.informacion.ref
+
+      reference = db.ref('profesional/' + id);
+      reference.remove();
+
+      reference = db.ref('profesional/lista/' + idLista);
+      reference.remove();
+
+      //Elimar pacientes asignados al profesional
+      var pacientes = body.pacientes;
+      var keys = Object.keys(pacientes);
+      for (var i = 0; i < keys.length; i++) {
+
+        var idPatient = keys[i];
+
+        if (idPatient != null && idPatient != '') {
+          reference = db.ref('pacientes/' + idPatient + '/informacion/profesional');
+          reference.remove();
+        }
+      }
+      res.status(200).send({ result: 'sucess', msj: 'data deleted sucess' });
+
+    } else
+      res.status(401).send("bad request");
+
+  });
+
+}
+
+app.post('/asignar', function (req, res) {
+  console.log("POST=/asignar");
+
+  var idPro = req.body.profesional
+  var idPatient = req.body.paciente
+
+  var reference = db.ref('profesional/' + idPro + '/pacientes/' + idPatient);
+  reference.set(idPatient);
+
+  reference = db.ref('pacientes/' + idPatient + '/informacion/profesional');
+  reference.set(idPro);
+
+  res.status(200).send('success');
 
 });
 
@@ -147,7 +319,7 @@ app.post('/finish-session', function (req, res) {
           var message = {
             to: tokenDoctor,
             collapse_key: '',
-            data: dat,
+            data: snap,
             notification: {
               title: 'Nueva sesión terminada',
               body: messagePatient,
@@ -180,102 +352,6 @@ app.post('/finish-session', function (req, res) {
 });
 
 
-app.put('/perfil', function (req, res) {
-
-  //validar data me falta
-  console.log("PUT=/perfil");
-
-  var type = req.body.type
-
-  if (type != undefined && type != '')
-    admin.auth().createUser({
-      email: req.body.informacion.email,
-      password: req.body.informacion.password,
-      disabled: false
-    })
-      .then(function (userRecord) {
-        // See the UserRecord reference doc for the contents of userRecord.
-
-        var branch = '';
-        if (type == "1")
-          branch = 'profesional/'
-        else if (type == "0")
-          branch = 'pacientes/'
-
-        ref = db.ref(branch + 'lista/');
-        var refPost = ref.push({ 'id': userRecord.uid, 'nombre': req.body.informacion.nombre })
-
-        ref = db.ref(branch + userRecord.uid + '/informacion');
-        req.body.informacion.id = userRecord.uid;
-        req.body.informacion.ref = refPost.key;
-        ref.set(req.body.informacion)
-
-        console.log('Successfully created new user:', userRecord.uid);
-        res.status(200).send('success');
-      })
-      .catch(function (error) {
-        console.log('Error creating new user:', error);
-        res.status(401).send(error);
-      });
-  else
-    res.status(400).send("bad request");
-
-});
-
-app.delete('/perfil', function (req, res) {
-
-  //validar data me falta
-  console.log("DELETE=/perfil");
-
-  var type = req.body.type
-
-  if (type != undefined && type != '') {
-
-    var uid = req.body.id;
-    admin.auth().deleteUser(uid).then(function () {
-
-      var branch = '';
-      var branch2 = '';
-      if (type == "1") {
-        branch = 'doctores/'
-        branch2 = 'pacientes/'
-      } else if (type == "0") {
-        branch = 'pacientes/'
-        branch2 = 'doctores/';
-      }
-
-      //Elimina los doctores o pacientes asignados
-      var info = '';
-      ref = db.ref(branch + id + '/' + branch2);
-      ref.once("value", function (snapshot) {
-        info = snapshot.val();
-      });
-
-      for (i in info.doctores) {
-        var objeto = Object.keys(arr);
-        ref = db.ref(branch2 + objeto.id + '/' + branch + uid);
-        ref.remove();
-      }
-
-      ref = db.ref(branch + uid + '/');
-      ref.remove();
-
-      ref = db.ref(branch + 'lista/' + req.body.ref);
-      ref.remove();
-
-      res.status(200).send('success');
-      console.log('Successfully deleted user');
-
-    }).catch(function (error) {
-      res.status(400).send(error);
-      console.log('Error deleting user:', error);
-
-    });
-  } else
-    res.status(400).send("bad request");
-
-});
-
 app.post('/perfil', function (req, res) {
 
   console.log("POST=/perfil");
@@ -288,32 +364,69 @@ app.post('/perfil', function (req, res) {
 
   if (id != undefined && id != '' && type != undefined && type != '') {
     var ref = undefined
+    var branch = ''
 
-    if (type == "1") {
-      ref = db.ref('profesional/' + id + '/informacion');
-    } else if (type == "0") {
-      ref = db.ref('pacientes/' + id + '/informacion');
-    }
+    if (type == "1")
+      branch = 'profesional/'
+    else if (type == "0")
+      branch = 'pacientes/'
 
+    ref = db.ref(branch + id + '/informacion');
     ref.once("value", function (snapshot) {
+
       var values = snapshot.val();
       if (values != null) {
 
         ref = db.ref(branch + id + '/informacion/token');
-        if (token != undefined && token != '') {
+        if (token != undefined && token != '' ) {
           ref.set(token);
           values.token = token;
         }
 
         res.status(200).send(values)
       } else {
-        res.status(401).send("Bad request - user doesnt exist");
+        res.status(401).send("Bad request - params");
       }
     });
 
   } else {
     res.status(402).send("Bad request - params ");
   }
+});
+
+app.post('/ultima-toma', function (req, res) {
+  console.log("POST=/ultima-toma");
+
+  var id = req.body.id;
+  if (id != undefined && id != '') {
+    var reference = db.ref('pacientes/' + id + '/monitoreo/pulso/tomas');
+    reference.once('value', function (snap) {
+      var takes = snap.val();
+      if (takes != null) {
+        var date = takes[takes.length - 1].fecha;
+        reference = db.ref('pacientes/' + id + '/monitoreo/pulso/' + date);
+        reference.once('value', function (snap2) {
+          res.status(200).send(snap2.val());
+        })
+      } else
+        res.status(501).send("Error internal server");
+    });
+  } else
+    res.status(402).send("Bad request - params ");
+});
+
+app.post('/metas', function (req, res) {
+  console.log("POST=/metas");
+
+  var id = req.body.id;
+  if (id != undefined && id != '') {
+    var reference = db.ref('pacientes/' + id + '/metas');
+    reference.once('value', function (snap) {
+      res.status(200).send(snap.val());
+    });
+  } else
+    res.status(402).send("Bad request - params ");
+
 });
 
 app.post('/update-token', function (req, res) {
@@ -454,7 +567,7 @@ app.post('/monitoreo', function (req, res) {
       ref.once("value", function (snapshot) {
         var values = snapshot.val();
         if (values != null) {
-//          const arr = Object.keys(values).map((key) => [key, values[key]]);
+          //          const arr = Object.keys(values).map((key) => [key, values[key]]);
           values = { 'pulso': values };
           res.status(200).send(values)
         } else {
@@ -478,6 +591,57 @@ app.post('/monitoreo', function (req, res) {
   }
 });
 
+app.get('/pacientes-lista', function (req, res) {
+
+  console.log('GET="/pacientes-lista"');
+  var msj = [];
+  var reference = db.ref('pacientes/lista');
+  reference.once('value', async function (snap) {
+
+    var values = snap.val();
+    if (values != null) {
+      values = Object.values(values);
+
+      for (i in values) {
+        var patientID = values[i].id;
+        reference = db.ref('pacientes/' + patientID + '/informacion');
+        await reference.once("value").then(function (snapshot2) {
+          var print = snapshot2.val();
+          msj[i] = { "informacion": print };
+          return "sucess";
+        });
+      }
+
+    }
+    res.status(200).send(msj);
+  });
+});
+
+app.get('/profesional-lista', function (req, res) {
+
+  console.log('GET="/profesional-lista"');
+  var msj = [];
+  var reference = db.ref('profesional/lista');
+  reference.once('value', async function (snap) {
+
+    var values = snap.val();
+    if (values != null) {
+      values = Object.values(values);
+
+      for (i in values) {
+        var patientID = values[i].id;
+        reference = db.ref('profesional/' + patientID + '/informacion');
+        await reference.once("value").then(function (snapshot2) {
+          var print = snapshot2.val();
+          msj[i] = { "informacion": print };
+          return "sucess";
+        });
+      }
+
+    }
+    res.status(200).send(msj);
+  });
+});
 
 app.post('/pacientes-lista', function (req, res) {
 
@@ -492,13 +656,13 @@ app.post('/pacientes-lista', function (req, res) {
     ref.once("value", async function (snapshot) {
       var values = snapshot.val();
       values = Object.values(values);
-      var aux = {"pacientes":[]};
+      var aux = { "pacientes": [] };
       for (i in values) {
         patientID = values[i];
         ref = db.ref('pacientes/' + patientID + '/informacion');
         await ref.once("value").then(function (snapshot2) {
           var print = snapshot2.val();
-          aux.pacientes[i] = { "informacion": print };  
+          aux.pacientes[i] = { "informacion": print };
           return "sucess";
         });
       }
